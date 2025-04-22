@@ -1,0 +1,108 @@
+// Models
+public class Livro { ... }
+public class Usuario { ... }
+public class Emprestimo { ... }
+
+// Interfaces
+public interface INotificacaoService
+{
+    void EnviarEmail(string destinatario, string assunto, string mensagem);
+    void EnviarSMS(string destinatario, string mensagem);
+}
+
+public interface IRepositorio<T>
+{
+    void Adicionar(T entidade);
+    T BuscarPorId(int id);
+    List<T> ListarTodos();
+}
+
+// Implementações Reais dos Repositórios (mock para exemplo)
+public class LivroRepositorio : IRepositorio<Livro> { ... }
+public class UsuarioRepositorio : IRepositorio<Usuario> { ... }
+public class EmprestimoRepositorio : IRepositorio<Emprestimo> { ... }
+
+// Serviço de Notificação
+public class NotificacaoService : INotificacaoService
+{
+    public void EnviarEmail(string destinatario, string assunto, string mensagem)
+    {
+        Console.WriteLine($"Email para {destinatario} | Assunto: {assunto}");
+    }
+
+    public void EnviarSMS(string destinatario, string mensagem)
+    {
+        Console.WriteLine($"SMS para {destinatario}: {mensagem}");
+    }
+}
+
+// Serviço Principal da Biblioteca
+public class BibliotecaService
+{
+    private readonly IRepositorio<Livro> _livros;
+    private readonly IRepositorio<Usuario> _usuarios;
+    private readonly IRepositorio<Emprestimo> _emprestimos;
+    private readonly INotificacaoService _notificador;
+
+    public BibliotecaService(IRepositorio<Livro> livros,
+                             IRepositorio<Usuario> usuarios,
+                             IRepositorio<Emprestimo> emprestimos,
+                             INotificacaoService notificador)
+    {
+        _livros = livros;
+        _usuarios = usuarios;
+        _emprestimos = emprestimos;
+        _notificador = notificador;
+    }
+
+    public void AdicionarLivro(Livro livro) => _livros.Adicionar(livro);
+
+    public void AdicionarUsuario(Usuario usuario)
+    {
+        _usuarios.Adicionar(usuario);
+        _notificador.EnviarEmail(usuario.Nome, "Bem-vindo à Biblioteca", "Cadastro realizado com sucesso.");
+    }
+
+    public bool RealizarEmprestimo(int usuarioId, string isbn, int diasEmprestimo)
+    {
+        var livro = _livros.ListarTodos().Find(l => l.ISBN == isbn && l.Disponivel);
+        var usuario = _usuarios.BuscarPorId(usuarioId);
+
+        if (livro == null || usuario == null) return false;
+
+        livro.Disponivel = false;
+        var emprestimo = new Emprestimo
+        {
+            Livro = livro,
+            Usuario = usuario,
+            DataEmprestimo = DateTime.Now,
+            DataDevolucaoPrevista = DateTime.Now.AddDays(diasEmprestimo)
+        };
+
+        _emprestimos.Adicionar(emprestimo);
+
+        _notificador.EnviarEmail(usuario.Nome, "Empréstimo Realizado", $"Livro emprestado: {livro.Titulo}");
+        _notificador.EnviarSMS(usuario.Nome, $"Você emprestou: {livro.Titulo}");
+        return true;
+    }
+
+    public double RealizarDevolucao(string isbn, int usuarioId)
+    {
+        var emprestimo = _emprestimos.ListarTodos().Find(e =>
+            e.Livro.ISBN == isbn && e.Usuario.ID == usuarioId && e.DataDevolucaoEfetiva == null);
+
+        if (emprestimo == null) return -1;
+
+        emprestimo.DataDevolucaoEfetiva = DateTime.Now;
+        emprestimo.Livro.Disponivel = true;
+
+        double multa = 0;
+        if (emprestimo.DataDevolucaoEfetiva > emprestimo.DataDevolucaoPrevista)
+        {
+            multa = (emprestimo.DataDevolucaoEfetiva.Value - emprestimo.DataDevolucaoPrevista).Days * 1.0;
+            _notificador.EnviarEmail(emprestimo.Usuario.Nome, "Multa Aplicada", $"Multa de R$ {multa}");
+        }
+
+        return multa;
+    }
+}
