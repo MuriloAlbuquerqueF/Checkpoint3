@@ -1,10 +1,29 @@
-// Models
-public class Livro { ... }
-public class Usuario { ... }
-public class Emprestimo { ... }
+// MODELOS
+public class Livro
+{
+    public string Titulo { get; set; }
+    public string Autor { get; set; }
+    public string ISBN { get; set; }
+    public bool Disponivel { get; set; } = true;
+}
 
-// Interfaces
-public interface INotificacaoService
+public class Usuario
+{
+    public int ID { get; set; }
+    public string Nome { get; set; }
+}
+
+public class Emprestimo
+{
+    public Livro Livro { get; set; }
+    public Usuario Usuario { get; set; }
+    public DateTime DataEmprestimo { get; set; }
+    public DateTime DataDevolucaoPrevista { get; set; }
+    public DateTime? DataDevolucaoEfetiva { get; set; }
+}
+
+// INTERFACES
+public interface INotificacaoServico
 {
     void EnviarEmail(string destinatario, string assunto, string mensagem);
     void EnviarSMS(string destinatario, string mensagem);
@@ -17,37 +36,66 @@ public interface IRepositorio<T>
     List<T> ListarTodos();
 }
 
-// Implementações Reais dos Repositórios (mock para exemplo)
-public class LivroRepositorio : IRepositorio<Livro> { ... }
-public class UsuarioRepositorio : IRepositorio<Usuario> { ... }
-public class EmprestimoRepositorio : IRepositorio<Emprestimo> { ... }
+// IMPLEMENTAÇÕES DE REPOSITÓRIOS (em memória)
+public class LivroRepositorio : IRepositorio<Livro>
+{
+    private List<Livro> livros = new();
 
-// Serviço de Notificação
-public class NotificacaoService : INotificacaoService
+    public void Adicionar(Livro livro) => livros.Add(livro);
+
+    public Livro BuscarPorId(int id) => livros.ElementAtOrDefault(id);
+
+    public List<Livro> ListarTodos() => livros;
+}
+
+public class UsuarioRepositorio : IRepositorio<Usuario>
+{
+    private List<Usuario> usuarios = new();
+
+    public void Adicionar(Usuario usuario) => usuarios.Add(usuario);
+
+    public Usuario BuscarPorId(int id) => usuarios.FirstOrDefault(u => u.ID == id);
+
+    public List<Usuario> ListarTodos() => usuarios;
+}
+
+public class EmprestimoRepositorio : IRepositorio<Emprestimo>
+{
+    private List<Emprestimo> emprestimos = new();
+
+    public void Adicionar(Emprestimo emprestimo) => emprestimos.Add(emprestimo);
+
+    public Emprestimo BuscarPorId(int id) => emprestimos.ElementAtOrDefault(id);
+
+    public List<Emprestimo> ListarTodos() => emprestimos;
+}
+
+// SERVIÇO DE NOTIFICAÇÃO
+public class NotificacaoServico : INotificacaoServico
 {
     public void EnviarEmail(string destinatario, string assunto, string mensagem)
     {
-        Console.WriteLine($"Email para {destinatario} | Assunto: {assunto}");
+        Console.WriteLine($"Email enviado para {destinatario} | Assunto: {assunto} | Mensagem: {mensagem}");
     }
 
     public void EnviarSMS(string destinatario, string mensagem)
     {
-        Console.WriteLine($"SMS para {destinatario}: {mensagem}");
+        Console.WriteLine($"SMS enviado para {destinatario}: {mensagem}");
     }
 }
 
-// Serviço Principal da Biblioteca
-public class BibliotecaService
+// SERVIÇO PRINCIPAL
+public class BibliotecaServico
 {
     private readonly IRepositorio<Livro> _livros;
     private readonly IRepositorio<Usuario> _usuarios;
     private readonly IRepositorio<Emprestimo> _emprestimos;
-    private readonly INotificacaoService _notificador;
+    private readonly INotificacaoServico _notificador;
 
-    public BibliotecaService(IRepositorio<Livro> livros,
+    public BibliotecaServico(IRepositorio<Livro> livros,
                              IRepositorio<Usuario> usuarios,
                              IRepositorio<Emprestimo> emprestimos,
-                             INotificacaoService notificador)
+                             INotificacaoServico notificador)
     {
         _livros = livros;
         _usuarios = usuarios;
@@ -65,7 +113,7 @@ public class BibliotecaService
 
     public bool RealizarEmprestimo(int usuarioId, string isbn, int diasEmprestimo)
     {
-        var livro = _livros.ListarTodos().Find(l => l.ISBN == isbn && l.Disponivel);
+        var livro = _livros.ListarTodos().FirstOrDefault(l => l.ISBN == isbn && l.Disponivel);
         var usuario = _usuarios.BuscarPorId(usuarioId);
 
         if (livro == null || usuario == null) return false;
@@ -88,8 +136,10 @@ public class BibliotecaService
 
     public double RealizarDevolucao(string isbn, int usuarioId)
     {
-        var emprestimo = _emprestimos.ListarTodos().Find(e =>
-            e.Livro.ISBN == isbn && e.Usuario.ID == usuarioId && e.DataDevolucaoEfetiva == null);
+        var emprestimo = _emprestimos.ListarTodos().FirstOrDefault(e =>
+            e.Livro.ISBN == isbn &&
+            e.Usuario.ID == usuarioId &&
+            e.DataDevolucaoEfetiva == null);
 
         if (emprestimo == null) return -1;
 
@@ -104,5 +154,31 @@ public class BibliotecaService
         }
 
         return multa;
+    }
+}
+
+// PROGRAMA PRINCIPAL
+class Program
+{
+    static void Main(string[] args)
+    {
+        var biblioteca = new BibliotecaServico(
+            new LivroRepositorio(),
+            new UsuarioRepositorio(),
+            new EmprestimoRepositorio(),
+            new NotificacaoServico()
+        );
+
+        biblioteca.AdicionarLivro(new Livro { Titulo = "Clean Code", Autor = "Robert C. Martin", ISBN = "978-0132350884" });
+        biblioteca.AdicionarLivro(new Livro { Titulo = "Design Patterns", Autor = "Erich Gamma", ISBN = "978-0201633610" });
+
+        biblioteca.AdicionarUsuario(new Usuario { Nome = "João Silva", ID = 1 });
+        biblioteca.AdicionarUsuario(new Usuario { Nome = "Maria Oliveira", ID = 2 });
+
+        biblioteca.RealizarEmprestimo(1, "978-0132350884", 7);
+
+        // Simulando devolução atrasada
+        double multa = biblioteca.RealizarDevolucao("978-0132350884", 1);
+        Console.WriteLine($"Multa por atraso: R$ {multa}");
     }
 }
